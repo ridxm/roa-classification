@@ -5,7 +5,7 @@ defaults:
   - _self_
 
 seed: 42
-run_name: default
+name: default
 
 # --- Data (populated by system config) ---
 data:
@@ -42,10 +42,12 @@ trainer:
 callbacks:
   checkpoint:
     _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    dirpath: ${hydra:runtime.output_dir}/checkpoints
     monitor: val/loss
     mode: min
     save_top_k: 3
-    filename: "e{epoch:03d}"
+    save_last: true
+    filename: "epoch{epoch:02d}-val_loss{val_loss:.4f}"
     auto_insert_metric_name: false
   early_stopping:
     _target_: lightning.pytorch.callbacks.EarlyStopping
@@ -57,8 +59,10 @@ callbacks:
 logger:
   _target_: lightning.pytorch.loggers.TensorBoardLogger
   save_dir: ${hydra:runtime.output_dir}
-  name: ${run_name}
+  name: ""
 
 hydra:
   run:
-    dir: outputs/${system.name}/${run_name}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/${name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    name: train_${system.name}

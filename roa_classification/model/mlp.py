@@ -77,6 +77,7 @@ class ClassifierMLP(pl.LightningModule):
         loss = self.loss_fn(logits, batch["label"])
         self.val_acc(logits, batch["label"].int())
         self.log("val/loss", loss, prog_bar=True)
+        self.log("val_loss", loss)  # underscore variant for checkpoint filename
         self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
         self._val_probs.append(torch.sigmoid(logits).detach())
         self._val_labels.append(batch["label"].int().detach())
