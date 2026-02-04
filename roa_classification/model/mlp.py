@@ -1,11 +1,14 @@
 """Binary classifier MLP as a Lightning module."""
 
+import logging
 from typing import List
 
 import torch
 import torch.nn as nn
 import lightning as pl
 from torchmetrics.classification import BinaryAccuracy
+
+log = logging.getLogger(__name__)
 
 
 class ClassifierMLP(pl.LightningModule):
@@ -147,17 +150,13 @@ class ClassifierMLP(pl.LightningModule):
         self.log(f"{prefix}/specificity", specificity)
         self.log(f"{prefix}/f1", f1)
 
-        print(
-            f"\n[{prefix}] thresholds=({lo}, {hi})  "
-            f"total={n}  classified={classified_mask.sum().item()}"
-        )
-        print(
-            f"  {'Separatrix':>12s}  {'Precision':>10s}  {'Recall':>10s}  "
-            f"{'Specificity':>12s}  {'F1':>10s}"
-        )
-        print(
-            f"  {sep_pct:>11.2f}%  {precision:>10.4f}  {recall:>10.4f}  "
-            f"{specificity:>12.4f}  {f1:>10.4f}"
+        log.info(
+            "\n[%s] thresholds=(%.2f, %.2f)  total=%d  classified=%d\n"
+            "  %12s  %10s  %10s  %12s  %10s\n"
+            "  %11.2f%%  %10.4f  %10.4f  %12.4f  %10.4f",
+            prefix, lo, hi, n, classified_mask.sum().item(),
+            "Separatrix", "Precision", "Recall", "Specificity", "F1",
+            sep_pct, precision, recall, specificity, f1,
         )
 
     # ------------------------------------------------------------------

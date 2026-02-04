@@ -16,11 +16,11 @@ data:
   num_workers: 4
   balance_samples: true
 
-# --- Model (populated by model config) ---
+# --- Model ---
+# hidden_layers comes from model group defaults
 model:
   _target_: roa_classification.model.mlp.ClassifierMLP
   input_dim: ${system.input_dim}
-  hidden_layers: ${model.hidden_layers}
   lr: 1e-3
   weight_decay: 1e-4
   T_max: ${trainer.max_epochs}
