@@ -56,11 +56,11 @@ class TrajectoryDataset(Dataset):
 class EvalStatesDataset(Dataset):
     """Dataset loaded from eval_states.txt (used for final test).
 
-    Each row: x,theta,x_dot,theta_dot,x_f,theta_f,x_dot_f,theta_dot_f,label
-    Uses only the initial state (cols 0-3) and label (col 8).
+    Format: initial_state..., final_state..., label
+    Uses only the initial state (first ``state_dim`` cols) and label (last col).
     """
 
-    def __init__(self, eval_states_path: Path, embed_fn) -> None:
+    def __init__(self, eval_states_path: Path, embed_fn, state_dim: int) -> None:
         states = []
         labels = []
         with open(eval_states_path) as f:
@@ -69,9 +69,11 @@ class EvalStatesDataset(Dataset):
                 if not line:
                     continue
                 vals = line.split(",")
-                raw = np.array([float(v) for v in vals[:4]], dtype=np.float32)
+                raw = np.array(
+                    [float(v) for v in vals[:state_dim]], dtype=np.float32
+                )
                 states.append(embed_fn(raw))
-                labels.append(int(float(vals[8])))
+                labels.append(int(float(vals[-1])))
 
         self.states = np.stack(states)
         self.labels = np.array(labels, dtype=np.float32)
@@ -161,7 +163,7 @@ class BaseClassificationDataModule(pl.LightningDataModule):
 
         # Test dataset from eval_states.txt
         self.test_dataset = EvalStatesDataset(
-            self.data_dir / "eval_states.txt", embed_fn
+            self.data_dir / "eval_states.txt", embed_fn, self.system.state_dim
         )
 
         # Compute sampler weights for class balancing on train split
