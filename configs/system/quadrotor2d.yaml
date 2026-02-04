@@ -1,0 +1,4 @@
+name: quadrotor2d
+dataset_dir: /common/users/shared/pracsys/genMoPlan/data_trajectories/quadrotor2D_rl
+data_target: roa_classification.data.quadrotor2d.Quadrotor2DClassificationDataModule
+input_dim: 7   # x_norm, z_norm, sin(theta), cos(theta), x_dot_norm, z_dot_norm, theta_dot_norm
