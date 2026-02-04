@@ -44,7 +44,8 @@ callbacks:
     monitor: val/loss
     mode: min
     save_top_k: 3
-    filename: "{epoch:03d}-{val/loss:.4f}"
+    filename: "e{epoch:03d}"
+    auto_insert_metric_name: false
   early_stopping:
     _target_: lightning.pytorch.callbacks.EarlyStopping
     monitor: val/loss

@@ -15,6 +15,7 @@ build/
 outputs/
 results/
 logs/
+lightning_logs/
 
 # IDE
 .vscode/

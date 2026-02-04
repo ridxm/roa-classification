@@ -13,7 +13,6 @@ data:
   train_split: 0.95
   batch_size: 256
   num_workers: 4
-  max_samples: 0
   balance_samples: false
 
 trainer:

@@ -21,7 +21,9 @@ def main(cfg: DictConfig) -> None:
     data_module.setup(stage="test")
 
     # Load model from checkpoint
-    model = ClassifierMLP.load_from_checkpoint(cfg.checkpoint)
+    model = ClassifierMLP.load_from_checkpoint(
+        cfg.checkpoint, weights_only=False
+    )
 
     # Trainer
     trainer: pl.Trainer = hydra.utils.instantiate(cfg.trainer)

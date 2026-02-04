@@ -10,8 +10,8 @@ from .base import BaseClassificationDataModule
 class CartPoleClassificationDataModule(BaseClassificationDataModule):
     """DataModule for CartPole ROA classification.
 
-    Training: all states from trajectory files (each state embedded to 5D).
-    Validation: initial states from eval_states.txt.
+    Train/val: 95/5 split of trajectory states (each embedded to 5D).
+    Test: initial states from eval_states.txt.
     """
 
     def __init__(self, dataset_dir: str, **kwargs) -> None:

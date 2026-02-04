@@ -19,5 +19,4 @@ class PendulumClassificationDataModule(BaseClassificationDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         self.system = PendulumSystem(dataset_dir=self.dataset_dir_str)
-        self.trajectories_dir = self.data_dir / "trajectories"
         super().setup(stage)
