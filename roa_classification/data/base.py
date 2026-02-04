@@ -5,16 +5,15 @@ from typing import List, Optional
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, Subset, WeightedRandomSampler
 
 import lightning as pl
 
 
-class TrajectoryTrainDataset(Dataset):
-    """Training dataset: all states from trajectory files.
+class TrajectoryDataset(Dataset):
+    """All states from trajectory files, pre-loaded into memory.
 
     Every state in a trajectory inherits that trajectory's 0/1 label.
-    States and labels are pre-loaded into memory as flat arrays.
     """
 
     def __init__(
@@ -55,7 +54,7 @@ class TrajectoryTrainDataset(Dataset):
 
 
 class EvalStatesDataset(Dataset):
-    """Validation dataset loaded from eval_states.txt.
+    """Dataset loaded from eval_states.txt (used for final test).
 
     Each row: x,theta,x_dot,theta_dot,x_f,theta_f,x_dot_f,theta_dot_f,label
     Uses only the initial state (cols 0-3) and label (col 8).
@@ -88,7 +87,7 @@ class EvalStatesDataset(Dataset):
 
 
 class BaseClassificationDataModule(pl.LightningDataModule):
-    """Train on all states from trajectory files, validate on eval_states.txt.
+    """Train/val from trajectory files (95/5 split), test on eval_states.txt.
 
     Subclasses set ``self.system`` before calling ``super().setup()``.
     """
@@ -98,6 +97,7 @@ class BaseClassificationDataModule(pl.LightningDataModule):
         data_dir: str,
         split_index: int = 0,
         num_trajectories: int = 1000,
+        train_split: float = 0.95,
         batch_size: int = 256,
         num_workers: int = 4,
         balance_samples: bool = True,
@@ -106,6 +106,7 @@ class BaseClassificationDataModule(pl.LightningDataModule):
         self.data_dir = Path(data_dir)
         self.split_index = split_index
         self.num_trajectories = num_trajectories
+        self.train_split = train_split
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.balance_samples = balance_samples
@@ -136,23 +137,42 @@ class BaseClassificationDataModule(pl.LightningDataModule):
         embed_fn = self.system.embed_state
         trajectories_dir = self.data_dir / "trajectories"
 
-        self.train_dataset = TrajectoryTrainDataset(
+        # Load all trajectory states into one dataset
+        full_dataset = TrajectoryDataset(
             self.trajectory_files,
             self.trajectory_labels,
             trajectories_dir,
             embed_fn,
         )
 
-        self.val_dataset = EvalStatesDataset(
+        # 95/5 split for train/val
+        n = len(full_dataset)
+        train_end = int(n * self.train_split)
+        train_indices = list(range(train_end))
+        val_indices = list(range(train_end, n))
+
+        self.train_dataset = Subset(full_dataset, train_indices)
+        self.val_dataset = Subset(full_dataset, val_indices)
+
+        # Store labels for logging
+        self._full_dataset = full_dataset
+        self.train_labels = full_dataset.labels[train_indices]
+        self.val_labels = full_dataset.labels[val_indices]
+
+        # Test dataset from eval_states.txt
+        self.test_dataset = EvalStatesDataset(
             self.data_dir / "eval_states.txt", embed_fn
         )
 
-        # Compute sampler weights for class balancing
+        # Compute sampler weights for class balancing on train split
         if self.balance_samples:
-            labels = self.train_dataset.labels
-            counts = np.bincount(labels.astype(int), minlength=2).astype(float)
+            counts = np.bincount(
+                self.train_labels.astype(int), minlength=2
+            ).astype(float)
             weights = 1.0 / counts
-            self._sample_weights = [weights[int(l)] for l in labels]
+            self._sample_weights = [
+                weights[int(full_dataset.labels[i])] for i in train_indices
+            ]
 
     def train_dataloader(self) -> DataLoader:
         if self.balance_samples and hasattr(self, "_sample_weights"):
@@ -186,4 +206,10 @@ class BaseClassificationDataModule(pl.LightningDataModule):
         )
 
     def test_dataloader(self) -> DataLoader:
-        return self.val_dataloader()
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )

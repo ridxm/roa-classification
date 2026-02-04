@@ -32,17 +32,19 @@ def main(cfg: DictConfig) -> None:
     data_module.prepare_data()
     data_module.setup()
 
-    train_labels = data_module.train_dataset.labels.astype(int)
+    train_labels = data_module.train_labels.astype(int)
     n_train = len(data_module.train_dataset)
     n_val = len(data_module.val_dataset)
+    n_test = len(data_module.test_dataset)
     counts = np.bincount(train_labels, minlength=2)
     n_traj = len(data_module.trajectory_files)
 
-    print(f"Loaded {n_train} samples from {n_traj} trajectories")
+    print(f"Loaded {n_train + n_val} samples from {n_traj} trajectories")
     print(f"  Success (1): {counts[1]} ({counts[1] / n_train * 100:.1f}%)")
     print(f"  Failure (0): {counts[0]} ({counts[0] / n_train * 100:.1f}%)")
-    print(f"Train: {n_train} samples")
-    print(f"Val: {n_val} samples")
+    print(f"Train: {n_train} samples (95%)")
+    print(f"Val:   {n_val} samples (5%)")
+    print(f"Test:  {n_test} samples (eval_states.txt)")
 
     # Model
     print("\nCreating model...")
