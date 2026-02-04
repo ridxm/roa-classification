@@ -1,0 +1,26 @@
+defaults:
+  - system: cartpole
+  - device: gpu0
+  - _self_
+
+seed: 42
+checkpoint: ???   # Must be provided: checkpoint=/path/to/model.ckpt
+
+data:
+  _target_: ${system.data_target}
+  dataset_dir: ${system.dataset_dir}
+  split_index: 0
+  train_split: 0.95
+  batch_size: 256
+  num_workers: 4
+  max_samples: 0
+  balance_samples: false
+
+trainer:
+  _target_: lightning.pytorch.Trainer
+  accelerator: ${device.accelerator}
+  devices: ${device.devices}
+
+hydra:
+  run:
+    dir: outputs/eval/${system.name}/${now:%Y-%m-%d_%H-%M-%S}

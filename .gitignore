@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Environment
+.env
+.env.local
+!.env.example
+
+# Outputs
+outputs/
+results/
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# Data artifacts
+*.png
+*.npz
+
+# Claude
+CLAUDE.md

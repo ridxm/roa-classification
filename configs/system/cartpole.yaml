@@ -1,0 +1,4 @@
+name: cartpole
+dataset_dir: /common/users/shared/pracsys/genMoPlan/data_trajectories/cartpole_pybullet
+data_target: roa_classification.data.cartpole.CartPoleClassificationDataModule
+input_dim: 5   # x_norm, sin(theta), cos(theta), x_dot_norm, theta_dot_norm

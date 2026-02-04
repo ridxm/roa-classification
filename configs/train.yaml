@@ -1,0 +1,60 @@
+defaults:
+  - system: cartpole
+  - model: mlp_small
+  - device: gpu0
+  - _self_
+
+seed: 42
+
+# --- Data (populated by system config) ---
+data:
+  _target_: ${system.data_target}
+  dataset_dir: ${system.dataset_dir}
+  split_index: 0
+  train_split: 0.95
+  batch_size: 256
+  num_workers: 4
+  max_samples: 0
+  balance_samples: true
+
+# --- Model (populated by model config) ---
+model:
+  _target_: roa_classification.model.mlp.ClassifierMLP
+  input_dim: ${system.input_dim}
+  hidden_layers: ${model.hidden_layers}
+  lr: 1e-3
+  weight_decay: 1e-4
+  T_max: ${trainer.max_epochs}
+  eta_min: 1e-6
+
+# --- Trainer ---
+trainer:
+  _target_: lightning.pytorch.Trainer
+  max_epochs: 500
+  accelerator: ${device.accelerator}
+  devices: ${device.devices}
+  log_every_n_steps: 10
+
+# --- Callbacks ---
+callbacks:
+  checkpoint:
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    monitor: val/loss
+    mode: min
+    save_top_k: 3
+    filename: "{epoch:03d}-{val/loss:.4f}"
+  early_stopping:
+    _target_: lightning.pytorch.callbacks.EarlyStopping
+    monitor: val/loss
+    patience: 50
+    mode: min
+
+# --- Logger ---
+logger:
+  _target_: lightning.pytorch.loggers.TensorBoardLogger
+  save_dir: ${hydra:runtime.cwd}/outputs
+  name: ${system.name}
+
+hydra:
+  run:
+    dir: outputs/${system.name}/${now:%Y-%m-%d_%H-%M-%S}

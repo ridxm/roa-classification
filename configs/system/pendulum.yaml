@@ -1,0 +1,4 @@
+name: pendulum
+dataset_dir: /common/users/shared/pracsys/genMoPlan/data_trajectories/pendulum_lqr_50k
+data_target: roa_classification.data.pendulum.PendulumClassificationDataModule
+input_dim: 3   # sin(theta), cos(theta), theta_dot_norm
