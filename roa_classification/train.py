@@ -18,11 +18,13 @@ def main(cfg: DictConfig) -> None:
     pl.seed_everything(cfg.seed, workers=True)
 
     system_name = cfg.system.name.replace("_", " ").title()
+    run_name = cfg.run_name
     print(f"\n{BANNER}")
     print(f"{system_name} Classification Training")
     print(BANNER)
+    print(f"Run:    {run_name}")
     print(f"Config: {cfg.system.name}")
-    print(f"Seed: {cfg.seed}")
+    print(f"Seed:   {cfg.seed}")
     print(f"Max epochs: {cfg.trainer.max_epochs}")
     print(BANNER)
 
