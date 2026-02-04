@@ -1,14 +1,11 @@
 """Binary classifier MLP as a Lightning module."""
 
-import logging
 from typing import List
 
 import torch
 import torch.nn as nn
 import lightning as pl
 from torchmetrics.classification import BinaryAccuracy
-
-log = logging.getLogger(__name__)
 
 
 class ClassifierMLP(pl.LightningModule):
@@ -45,9 +42,10 @@ class ClassifierMLP(pl.LightningModule):
 
         self.loss_fn = nn.BCEWithLogitsLoss()
 
-        # Simple metrics for training/val logging
+        # Metrics
         self.train_acc = BinaryAccuracy()
         self.val_acc = BinaryAccuracy()
+        self.best_val_loss = float("inf")
 
         # Buffers for threshold-based eval (collected across batches)
         self._val_probs: List[torch.Tensor] = []
@@ -71,7 +69,7 @@ class ClassifierMLP(pl.LightningModule):
         loss = self.loss_fn(logits, batch["label"])
         self.train_acc(logits, batch["label"].int())
         self.log("train/loss", loss, prog_bar=True)
-        self.log("train/acc", self.train_acc, on_step=False, on_epoch=True)
+        self.log("train/acc", self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -79,32 +77,35 @@ class ClassifierMLP(pl.LightningModule):
         loss = self.loss_fn(logits, batch["label"])
         self.val_acc(logits, batch["label"].int())
         self.log("val/loss", loss, prog_bar=True)
-        self.log("val/acc", self.val_acc, on_step=False, on_epoch=True)
+        self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
         self._val_probs.append(torch.sigmoid(logits).detach())
         self._val_labels.append(batch["label"].int().detach())
 
     def on_validation_epoch_end(self):
         if self._val_probs:
-            self._print_threshold_metrics(
-                torch.cat(self._val_probs),
-                torch.cat(self._val_labels),
-                prefix="val",
-            )
+            probs = torch.cat(self._val_probs)
+            labels = torch.cat(self._val_labels)
+            # Track best val loss
+            val_loss = self.trainer.callback_metrics.get("val/loss")
+            if val_loss is not None and val_loss.item() < self.best_val_loss:
+                self.best_val_loss = val_loss.item()
+            self.log("val/loss_best", self.best_val_loss, prog_bar=True)
+            self._compute_and_log_metrics(probs, labels, "val")
         self._val_probs.clear()
         self._val_labels.clear()
 
     def test_step(self, batch, batch_idx):
         logits = self(batch["inputs"])
+        loss = self.loss_fn(logits, batch["label"])
+        self.log("test/loss", loss)
         self._test_probs.append(torch.sigmoid(logits).detach())
         self._test_labels.append(batch["label"].int().detach())
 
     def on_test_epoch_end(self):
         if self._test_probs:
-            self._print_threshold_metrics(
-                torch.cat(self._test_probs),
-                torch.cat(self._test_labels),
-                prefix="test",
-            )
+            probs = torch.cat(self._test_probs)
+            labels = torch.cat(self._test_labels)
+            self._compute_and_log_metrics(probs, labels, "test")
         self._test_probs.clear()
         self._test_labels.clear()
 
@@ -112,7 +113,7 @@ class ClassifierMLP(pl.LightningModule):
     # Threshold-based metrics
     # ------------------------------------------------------------------
 
-    def _print_threshold_metrics(
+    def _compute_and_log_metrics(
         self,
         probs: torch.Tensor,
         labels: torch.Tensor,
@@ -130,33 +131,54 @@ class ClassifierMLP(pl.LightningModule):
         preds = (probs[classified_mask] >= hi).int()
         gt = labels[classified_mask]
 
-        tp = ((preds == 1) & (gt == 1)).sum().float()
-        fp = ((preds == 1) & (gt == 0)).sum().float()
-        fn = ((preds == 0) & (gt == 1)).sum().float()
-        tn = ((preds == 0) & (gt == 0)).sum().float()
+        tp = ((preds == 1) & (gt == 1)).sum().float().item()
+        fp = ((preds == 1) & (gt == 0)).sum().float().item()
+        fn = ((preds == 0) & (gt == 1)).sum().float().item()
+        tn = ((preds == 0) & (gt == 0)).sum().float().item()
 
-        precision = (tp / (tp + fp)).item() if (tp + fp) > 0 else 0.0
-        recall = (tp / (tp + fn)).item() if (tp + fn) > 0 else 0.0
-        specificity = (tn / (tn + fp)).item() if (tn + fp) > 0 else 0.0
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
         f1 = (
             2 * precision * recall / (precision + recall)
             if (precision + recall) > 0
             else 0.0
         )
+        tpr = recall
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+        tnr = specificity
+        fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
+        acc = (tp + tn) / (tp + fp + fn + tn) if (tp + fp + fn + tn) > 0 else 0.0
 
-        self.log(f"{prefix}/separatrix_pct", sep_pct)
+        # Log all metrics
+        self.log(f"{prefix}/acc", acc)
         self.log(f"{prefix}/precision", precision)
         self.log(f"{prefix}/recall", recall)
         self.log(f"{prefix}/specificity", specificity)
         self.log(f"{prefix}/f1", f1)
+        self.log(f"{prefix}/separatrix_pct", sep_pct)
+        self.log(f"{prefix}/tp", tp)
+        self.log(f"{prefix}/fp", fp)
+        self.log(f"{prefix}/tn", tn)
+        self.log(f"{prefix}/fn", fn)
+        self.log(f"{prefix}/tpr", tpr)
+        self.log(f"{prefix}/fpr", fpr)
+        self.log(f"{prefix}/tnr", tnr)
+        self.log(f"{prefix}/fnr", fnr)
 
-        log.info(
-            "\n[%s] thresholds=(%.2f, %.2f)  total=%d  classified=%d\n"
-            "  %12s  %10s  %10s  %12s  %10s\n"
-            "  %11.2f%%  %10.4f  %10.4f  %12.4f  %10.4f",
-            prefix, lo, hi, n, classified_mask.sum().item(),
-            "Separatrix", "Precision", "Recall", "Specificity", "F1",
-            sep_pct, precision, recall, specificity, f1,
+        # Console output
+        n_cls = int(tp + fp + fn + tn)
+        print(
+            f"\n[{prefix}] thresholds=({lo}, {hi})  "
+            f"total={n}  classified={n_cls}"
+        )
+        print(
+            f"  {'Separatrix':>12s}  {'Precision':>10s}  {'Recall':>10s}  "
+            f"{'Specificity':>12s}  {'F1':>10s}"
+        )
+        print(
+            f"  {sep_pct:>11.2f}%  {precision:>10.4f}  {recall:>10.4f}  "
+            f"{specificity:>12.4f}  {f1:>10.4f}"
         )
 
     # ------------------------------------------------------------------

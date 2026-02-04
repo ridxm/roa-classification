@@ -53,8 +53,7 @@ callbacks:
 # --- Logger ---
 logger:
   _target_: lightning.pytorch.loggers.TensorBoardLogger
-  save_dir: ${hydra:runtime.cwd}/outputs
-  name: ${system.name}
+  save_dir: ${hydra:runtime.output_dir}
 
 hydra:
   run:
