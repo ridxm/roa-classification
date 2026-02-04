@@ -5,19 +5,16 @@ from typing import List
 import torch
 import torch.nn as nn
 import lightning as pl
-from torchmetrics.classification import (
-    BinaryAccuracy,
-    BinaryConfusionMatrix,
-    BinaryF1Score,
-    BinaryPrecision,
-    BinaryRecall,
-)
+from torchmetrics.classification import BinaryAccuracy
 
 
 class ClassifierMLP(pl.LightningModule):
-    """Simple feedforward MLP for binary ROA classification.
+    """Feedforward MLP for binary ROA classification.
 
     Uses BCEWithLogitsLoss, AdamW optimizer, and CosineAnnealingLR scheduler.
+    Threshold-based evaluation: predictions below ``lower_thresh`` are class 0,
+    above ``upper_thresh`` are class 1, and in-between is the separatrix
+    (unclassified). Metrics are computed on classified samples only.
     """
 
     def __init__(
@@ -28,6 +25,8 @@ class ClassifierMLP(pl.LightningModule):
         weight_decay: float = 1e-4,
         T_max: int = 500,
         eta_min: float = 1e-6,
+        lower_thresh: float = 0.4,
+        upper_thresh: float = 0.6,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -43,13 +42,15 @@ class ClassifierMLP(pl.LightningModule):
 
         self.loss_fn = nn.BCEWithLogitsLoss()
 
-        # Metrics
+        # Simple metrics for training/val logging
         self.train_acc = BinaryAccuracy()
         self.val_acc = BinaryAccuracy()
-        self.test_precision = BinaryPrecision()
-        self.test_recall = BinaryRecall()
-        self.test_f1 = BinaryF1Score()
-        self.test_cm = BinaryConfusionMatrix()
+
+        # Buffers for threshold-based eval (collected across batches)
+        self._val_probs: List[torch.Tensor] = []
+        self._val_labels: List[torch.Tensor] = []
+        self._test_probs: List[torch.Tensor] = []
+        self._test_labels: List[torch.Tensor] = []
 
     # ------------------------------------------------------------------
     # Forward
@@ -76,24 +77,88 @@ class ClassifierMLP(pl.LightningModule):
         self.val_acc(logits, batch["label"].int())
         self.log("val/loss", loss, prog_bar=True)
         self.log("val/acc", self.val_acc, on_step=False, on_epoch=True)
+        self._val_probs.append(torch.sigmoid(logits).detach())
+        self._val_labels.append(batch["label"].int().detach())
+
+    def on_validation_epoch_end(self):
+        if self._val_probs:
+            self._print_threshold_metrics(
+                torch.cat(self._val_probs),
+                torch.cat(self._val_labels),
+                prefix="val",
+            )
+        self._val_probs.clear()
+        self._val_labels.clear()
 
     def test_step(self, batch, batch_idx):
         logits = self(batch["inputs"])
-        loss = self.loss_fn(logits, batch["label"])
-        labels_int = batch["label"].int()
-        self.test_precision(logits, labels_int)
-        self.test_recall(logits, labels_int)
-        self.test_f1(logits, labels_int)
-        self.test_cm.update(logits, labels_int)
-        self.log("test/loss", loss)
-        self.log("test/precision", self.test_precision, on_step=False, on_epoch=True)
-        self.log("test/recall", self.test_recall, on_step=False, on_epoch=True)
-        self.log("test/f1", self.test_f1, on_step=False, on_epoch=True)
+        self._test_probs.append(torch.sigmoid(logits).detach())
+        self._test_labels.append(batch["label"].int().detach())
 
     def on_test_epoch_end(self):
-        cm = self.test_cm.compute()
-        print(f"\nConfusion Matrix:\n{cm}")
-        self.test_cm.reset()
+        if self._test_probs:
+            self._print_threshold_metrics(
+                torch.cat(self._test_probs),
+                torch.cat(self._test_labels),
+                prefix="test",
+            )
+        self._test_probs.clear()
+        self._test_labels.clear()
+
+    # ------------------------------------------------------------------
+    # Threshold-based metrics
+    # ------------------------------------------------------------------
+
+    def _print_threshold_metrics(
+        self,
+        probs: torch.Tensor,
+        labels: torch.Tensor,
+        prefix: str,
+    ) -> None:
+        lo = self.hparams.lower_thresh
+        hi = self.hparams.upper_thresh
+        n = probs.numel()
+
+        sep_mask = (probs >= lo) & (probs <= hi)
+        classified_mask = ~sep_mask
+        sep_pct = sep_mask.float().sum().item() / n * 100
+
+        # Predictions for classified samples
+        preds = (probs[classified_mask] >= hi).int()
+        gt = labels[classified_mask]
+
+        tp = ((preds == 1) & (gt == 1)).sum().float()
+        fp = ((preds == 1) & (gt == 0)).sum().float()
+        fn = ((preds == 0) & (gt == 1)).sum().float()
+        tn = ((preds == 0) & (gt == 0)).sum().float()
+
+        precision = (tp / (tp + fp)).item() if (tp + fp) > 0 else 0.0
+        recall = (tp / (tp + fn)).item() if (tp + fn) > 0 else 0.0
+        specificity = (tn / (tn + fp)).item() if (tn + fp) > 0 else 0.0
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if (precision + recall) > 0
+            else 0.0
+        )
+
+        self.log(f"{prefix}/separatrix_pct", sep_pct)
+        self.log(f"{prefix}/precision", precision)
+        self.log(f"{prefix}/recall", recall)
+        self.log(f"{prefix}/specificity", specificity)
+        self.log(f"{prefix}/f1", f1)
+
+        print(
+            f"\n[{prefix}] thresholds=({lo}, {hi})  "
+            f"total={n}  classified={classified_mask.sum().item()}"
+        )
+        print(
+            f"  {'Separatrix':>12s}  {'Precision':>10s}  {'Recall':>10s}  "
+            f"{'Specificity':>12s}  {'F1':>10s}"
+        )
+        print(
+            f"  {sep_pct:>11.2f}%  {precision:>10.4f}  {recall:>10.4f}  "
+            f"{specificity:>12.4f}  {f1:>10.4f}"
+        )
 
     # ------------------------------------------------------------------
     # Optimizer / Scheduler

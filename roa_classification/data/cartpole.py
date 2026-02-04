@@ -10,8 +10,8 @@ from .base import BaseClassificationDataModule
 class CartPoleClassificationDataModule(BaseClassificationDataModule):
     """DataModule for CartPole ROA classification.
 
-    Embedded input:
-        [x_norm, sin(theta), cos(theta), x_dot_norm, theta_dot_norm] (5D).
+    Training: all states from trajectory files (each state embedded to 5D).
+    Validation: initial states from eval_states.txt.
     """
 
     def __init__(self, dataset_dir: str, **kwargs) -> None:
@@ -20,5 +20,4 @@ class CartPoleClassificationDataModule(BaseClassificationDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         self.system = CartPoleSystem(dataset_dir=self.dataset_dir_str)
-        self.trajectories_dir = self.data_dir / "trajectories"
         super().setup(stage)

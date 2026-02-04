@@ -11,10 +11,9 @@ data:
   _target_: ${system.data_target}
   dataset_dir: ${system.dataset_dir}
   split_index: 0
-  train_split: 0.95
+  num_trajectories: 1000
   batch_size: 256
   num_workers: 4
-  max_samples: 0
   balance_samples: true
 
 # --- Model (populated by model config) ---
@@ -26,6 +25,8 @@ model:
   weight_decay: 1e-4
   T_max: ${trainer.max_epochs}
   eta_min: 1e-6
+  lower_thresh: 0.4
+  upper_thresh: 0.6
 
 # --- Trainer ---
 trainer:
