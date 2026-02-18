@@ -14,6 +14,7 @@ build/
 # Outputs
 outputs/
 results/
+predictions/
 logs/
 lightning_logs/
 

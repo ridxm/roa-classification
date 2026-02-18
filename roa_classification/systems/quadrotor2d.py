@@ -15,8 +15,6 @@ class Quadrotor2DSystem(DynamicalSystem):
     Manifold: R^2 x S^1 x R^3 (position, pitch angle on circle, velocities).
     Embedded representation:
         [x_norm, z_norm, sin(theta), cos(theta), x_dot_norm, z_dot_norm, theta_dot_norm] (7D).
-
-    Note: z has asymmetric bounds (0.1 to 1.5), so we normalize using center and range.
     """
 
     def __init__(self, dataset_dir: str) -> None:
@@ -32,6 +30,7 @@ class Quadrotor2DSystem(DynamicalSystem):
 
         # Symmetric bounds (use max absolute value)
         self.x_limit = max(abs(bounds["x"]["min"]), abs(bounds["x"]["max"]))
+        self.z_limit = max(abs(bounds["z"]["min"]), abs(bounds["z"]["max"]))
         self.x_dot_limit = max(
             abs(bounds["x_dot"]["min"]), abs(bounds["x_dot"]["max"])
         )
@@ -41,11 +40,6 @@ class Quadrotor2DSystem(DynamicalSystem):
         self.theta_dot_limit = max(
             abs(bounds["theta_dot"]["min"]), abs(bounds["theta_dot"]["max"])
         )
-
-        # Asymmetric z bounds: normalize to [-1, 1] via center and half-range
-        z_min, z_max = bounds["z"]["min"], bounds["z"]["max"]
-        self.z_center = (z_min + z_max) / 2
-        self.z_range = (z_max - z_min) / 2
 
     # ------------------------------------------------------------------
     # Abstract interface
@@ -64,7 +58,7 @@ class Quadrotor2DSystem(DynamicalSystem):
     def define_state_bounds(self) -> Dict[str, Tuple[float, float]]:
         return {
             "x": (-self.x_limit, self.x_limit),
-            "z": (self.z_center - self.z_range, self.z_center + self.z_range),
+            "z": (-self.z_limit, self.z_limit),
             "theta": (-np.pi, np.pi),
             "x_dot": (-self.x_dot_limit, self.x_dot_limit),
             "z_dot": (-self.z_dot_limit, self.z_dot_limit),
@@ -83,7 +77,7 @@ class Quadrotor2DSystem(DynamicalSystem):
         return np.array(
             [
                 x / self.x_limit,
-                (z - self.z_center) / self.z_range,
+                z / self.z_limit,
                 np.sin(theta),
                 np.cos(theta),
                 x_dot / self.x_dot_limit,

@@ -1,0 +1,4 @@
+name: quadrotor3d
+dataset_dir: /common/users/shared/pracsys/genMoPlan/data_trajectories/quadrotor3D_lqr
+data_target: roa_classification.data.quadrotor3d.Quadrotor3DClassificationDataModule
+input_dim: 13   # x, y, z, qw, qx, qy, qz, x_dot, y_dot, z_dot, p, q, r (all normalized)

@@ -1,6 +1,6 @@
 defaults:
   - system: cartpole
-  - model: mlp_small
+  - model: mlp_large
   - device: gpu0
   - _self_
 
@@ -14,7 +14,7 @@ data:
   split_index: 0
   num_trajectories: 1000
   train_split: 0.95
-  batch_size: 256
+  batch_size: 64
   num_workers: 4
   balance_samples: true
 
