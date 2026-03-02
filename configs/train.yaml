@@ -12,8 +12,10 @@ data:
   _target_: ${system.data_target}
   dataset_dir: ${system.dataset_dir}
   split_index: 0
+  split_name: null
   num_trajectories: 1000
-  train_split: 0.95
+  train_split: 0.9
+  test_file: test_set.txt
   batch_size: 64
   num_workers: 4
   balance_samples: true

@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset, Subset, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 import lightning as pl
 
@@ -89,7 +89,7 @@ class EvalStatesDataset(Dataset):
 
 
 class BaseClassificationDataModule(pl.LightningDataModule):
-    """Train/val from trajectory files (95/5 split), test on eval_states.txt.
+    """Train/val from trajectory files (trajectory-level split), test on test_set.txt.
 
     Subclasses set ``self.system`` before calling ``super().setup()``.
     """
@@ -98,20 +98,24 @@ class BaseClassificationDataModule(pl.LightningDataModule):
         self,
         data_dir: str,
         split_index: int = 0,
+        split_name: Optional[str] = None,
         num_trajectories: int = 1000,
-        train_split: float = 0.95,
+        train_split: float = 0.9,
         batch_size: int = 256,
         num_workers: int = 4,
         balance_samples: bool = True,
+        test_file: str = "test_set.txt",
     ) -> None:
         super().__init__()
         self.data_dir = Path(data_dir)
         self.split_index = split_index
+        self.split_name = split_name
         self.num_trajectories = num_trajectories
         self.train_split = train_split
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.balance_samples = balance_samples
+        self.test_file = test_file
 
         self.system = None  # subclass sets this
 
@@ -121,8 +125,12 @@ class BaseClassificationDataModule(pl.LightningDataModule):
 
     def prepare_data(self) -> None:
         splits_dir = self.data_dir / "train_test_splits"
-        idx_file = splits_dir / f"shuffled_indices_{self.split_index}.txt"
-        lbl_file = splits_dir / f"shuffled_labels_{self.split_index}.txt"
+        if self.split_name:
+            idx_file = splits_dir / f"{self.split_name}_indices.txt"
+            lbl_file = splits_dir / f"{self.split_name}_labels.txt"
+        else:
+            idx_file = splits_dir / f"shuffled_indices_{self.split_index}.txt"
+            lbl_file = splits_dir / f"shuffled_labels_{self.split_index}.txt"
 
         with open(idx_file) as f:
             all_files = [line.strip() for line in f if line.strip()]
@@ -139,31 +147,36 @@ class BaseClassificationDataModule(pl.LightningDataModule):
         embed_fn = self.system.embed_state
         trajectories_dir = self.data_dir / "trajectories"
 
-        # Load all trajectory states into one dataset
-        full_dataset = TrajectoryDataset(
-            self.trajectory_files,
-            self.trajectory_labels,
+        # Split trajectories for train/val (trajectory-level split)
+        n_traj = len(self.trajectory_files)
+        train_end = int(n_traj * self.train_split)
+
+        self.train_trajectory_files = self.trajectory_files[:train_end]
+        self.train_trajectory_labels = self.trajectory_labels[:train_end]
+        self.val_trajectory_files = self.trajectory_files[train_end:]
+        self.val_trajectory_labels = self.trajectory_labels[train_end:]
+
+        # Create separate datasets for train and val
+        self.train_dataset = TrajectoryDataset(
+            self.train_trajectory_files,
+            self.train_trajectory_labels,
+            trajectories_dir,
+            embed_fn,
+        )
+        self.val_dataset = TrajectoryDataset(
+            self.val_trajectory_files,
+            self.val_trajectory_labels,
             trajectories_dir,
             embed_fn,
         )
 
-        # 95/5 split for train/val
-        n = len(full_dataset)
-        train_end = int(n * self.train_split)
-        train_indices = list(range(train_end))
-        val_indices = list(range(train_end, n))
-
-        self.train_dataset = Subset(full_dataset, train_indices)
-        self.val_dataset = Subset(full_dataset, val_indices)
-
         # Store labels for logging
-        self._full_dataset = full_dataset
-        self.train_labels = full_dataset.labels[train_indices]
-        self.val_labels = full_dataset.labels[val_indices]
+        self.train_labels = self.train_dataset.labels
+        self.val_labels = self.val_dataset.labels
 
-        # Test dataset from eval_states.txt
+        # Test dataset
         self.test_dataset = EvalStatesDataset(
-            self.data_dir / "eval_states.txt", embed_fn, self.system.state_dim
+            self.data_dir / self.test_file, embed_fn, self.system.state_dim
         )
 
         # Compute sampler weights for class balancing on train split
@@ -173,7 +186,7 @@ class BaseClassificationDataModule(pl.LightningDataModule):
             ).astype(float)
             weights = 1.0 / counts
             self._sample_weights = [
-                weights[int(full_dataset.labels[i])] for i in train_indices
+                weights[int(l)] for l in self.train_labels
             ]
 
     def train_dataloader(self) -> DataLoader:

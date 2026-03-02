@@ -5,6 +5,7 @@ defaults:
 
 seed: 42
 checkpoint: ???   # Must be provided: checkpoint=/path/to/model.ckpt
+output_dir: ???   # Must be provided: output_dir=/path/to/save/csvs
 
 data:
   _target_: ${system.data_target}
@@ -18,11 +19,6 @@ data:
   num_workers: 4
   balance_samples: false
 
-trainer:
-  _target_: lightning.pytorch.Trainer
-  accelerator: ${device.accelerator}
-  devices: ${device.devices}
-
 hydra:
   run:
-    dir: outputs/eval/${system.name}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/predict_splits/${system.name}/${now:%Y-%m-%d_%H-%M-%S}

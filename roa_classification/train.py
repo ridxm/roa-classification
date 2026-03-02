@@ -5,12 +5,21 @@ Usage:
     python -m roa_classification.train system=pendulum model=mlp_large trainer.max_epochs=1000
 """
 
+from pathlib import Path
+
 import hydra
+from hydra.core.hydra_config import HydraConfig
 import lightning as pl
 import numpy as np
 from omegaconf import DictConfig
 
 BANNER = "=" * 80
+
+
+def _save_split_file(path: Path, files, labels) -> None:
+    with open(path, "w") as f:
+        for fname, label in zip(files, labels):
+            f.write(f"{fname},{label}\n")
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="train")
@@ -38,14 +47,33 @@ def main(cfg: DictConfig) -> None:
     n_val = len(data_module.val_dataset)
     n_test = len(data_module.test_dataset)
     counts = np.bincount(train_labels, minlength=2)
-    n_traj = len(data_module.trajectory_files)
+    n_train_traj = len(data_module.train_trajectory_files)
+    n_val_traj = len(data_module.val_trajectory_files)
+    n_traj = n_train_traj + n_val_traj
+    train_pct = int(data_module.train_split * 100)
+    val_pct = 100 - train_pct
 
     print(f"Loaded {n_train + n_val} samples from {n_traj} trajectories")
+    print(f"  Train trajectories: {n_train_traj} ({train_pct}%)")
+    print(f"  Val trajectories:   {n_val_traj} ({val_pct}%)")
     print(f"  Success (1): {counts[1]} ({counts[1] / n_train * 100:.1f}%)")
     print(f"  Failure (0): {counts[0]} ({counts[0] / n_train * 100:.1f}%)")
-    print(f"Train: {n_train} samples (95%)")
-    print(f"Val:   {n_val} samples (5%)")
-    print(f"Test:  {n_test} samples (eval_states.txt)")
+    print(f"Train: {n_train} samples")
+    print(f"Val:   {n_val} samples")
+    print(f"Test:  {n_test} samples ({data_module.test_file})")
+
+    # Save split info for reproducibility
+    output_dir = Path(HydraConfig.get().runtime.output_dir)
+    _save_split_file(
+        output_dir / "train_trajectories.txt",
+        data_module.train_trajectory_files,
+        data_module.train_trajectory_labels,
+    )
+    _save_split_file(
+        output_dir / "val_trajectories.txt",
+        data_module.val_trajectory_files,
+        data_module.val_trajectory_labels,
+    )
 
     # Model
     print("\nCreating model...")
